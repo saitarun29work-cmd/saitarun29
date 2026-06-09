@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sai Tarun Mobile Admin</title>
+  <style>
+    body{margin:0;background:#080912;color:#fff;font-family:system-ui,Segoe UI,Arial,sans-serif}
+    main{max-width:560px;margin:0 auto;padding:18px}
+    h1{font-size:22px;margin:10px 0 4px}
+    p{color:#aab;margin:0 0 18px;font-size:13px}
+    .card{background:#151621;border:1px solid #2a2c3d;border-radius:16px;padding:16px;margin:14px 0}
+    label{display:block;margin:13px 0 6px;color:#aab;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+    input,select{width:100%;box-sizing:border-box;background:#0f1018;border:1px solid #303247;color:#fff;border-radius:11px;padding:13px;font-size:15px}
+    button{width:100%;border:0;border-radius:12px;padding:14px;margin-top:12px;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-weight:900;font-size:15px}
+    .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .quick{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+    .quick button{background:#272a3d;font-size:12px;padding:11px}
+    pre{white-space:pre-wrap;word-break:break-word;background:#0f1018;border:1px solid #303247;border-radius:12px;padding:12px;color:#cbd5e1;min-height:70px}
+    .ok{color:#86efac}.err{color:#fca5a5}.muted{color:#94a3b8;font-size:12px}
+  </style>
+</head>
+<body>
+<main>
+  <h1>Sai Tarun License Admin</h1>
+  <p>Mobile approval page. Never hardcode your admin token.</p>
+  <section class="card">
+    <label>Worker URL</label>
+    <input id="worker" value="https://sai-tarun-heygen-auth.saitarunheygen.workers.dev">
+    <label>Admin Token</label>
+    <input id="token" type="password" placeholder="Paste ADMIN_TOKEN">
+    <label>User / License ID</label>
+    <input id="license" placeholder="ST_xxxxxxxxxxxxxxxxxxxx">
+    <div class="row">
+      <div><label>Plan</label><select id="plan"><option>pro</option><option>trial</option><option>ultra</option><option>free</option></select></div>
+      <div><label>Devices</label><select id="devices"><option>1</option><option>2</option><option>3</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Days</label><select id="days"><option value="7">7</option><option value="30" selected>30</option><option value="90">90</option><option value="0">No expiry</option></select></div>
+      <div><label>Usage</label><input id="usage" type="number" value="999999"></div>
+    </div>
+    <div class="quick">
+      <button onclick="preset('trial')">7 Trial</button>
+      <button onclick="preset('pro')">30 Pro</button>
+      <button onclick="preset('ultra')">90 Ultra</button>
+    </div>
+    <button onclick="approve()">Approve User</button>
+    <button onclick="lookup()" style="background:#272a3d">Lookup</button>
+    <button onclick="clearToken()" style="background:#7f1d1d">Clear Token</button>
+    <p class="muted">Token is saved only in this browser localStorage for convenience.</p>
+  </section>
+  <section class="card">
+    <div id="status" class="muted">Ready.</div>
+    <pre id="out">No result yet.</pre>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+$('token').value=localStorage.getItem('st_admin_token')||'';
+$('worker').value=localStorage.getItem('st_worker')||$('worker').value;
+function clean(v){return String(v||'').trim().replace(/[^A-Za-z0-9_]/g,'')}
+function expiry(){const d=Number($('days').value);return d?new Date(Date.now()+d*86400000).toISOString():null}
+function status(t,c='muted'){$('status').className=c;$('status').textContent=t}
+function save(){localStorage.setItem('st_worker',$('worker').value.trim());if($('token').value.trim())localStorage.setItem('st_admin_token',$('token').value.trim())}
+function body(){return{licenseKey:clean($('license').value),plan:$('plan').value,usageLimit:Number($('usage').value),deviceLimit:Number($('devices').value),expiresAt:expiry(),note:'Mobile admin approval'}}
+function preset(p){if(p==='trial'){$('plan').value='trial';$('days').value='7';$('usage').value='5';$('devices').value='1'}if(p==='pro'){$('plan').value='pro';$('days').value='30';$('usage').value='999999';$('devices').value='1'}if(p==='ultra'){$('plan').value='ultra';$('days').value='90';$('usage').value='999999';$('devices').value='2'}}
+async function call(path,opts={}){save();const h={'Content-Type':'application/json'};if(opts.admin)h.Authorization='Bearer '+$('token').value.trim();const r=await fetch($('worker').value.trim().replace(/\/+$/,'')+path,{method:opts.body?'POST':'GET',headers:h,body:opts.body?JSON.stringify(opts.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw Error(j.error||j.message||'failed');return j}
+async function approve(){try{status('Approving...');const j=await call('/admin/approve',{admin:true,body:body()});$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Approved. User can Check Status now.','ok')}catch(e){status('Approval failed: '+e.message,'err')}}
+async function lookup(){try{const id=clean($('license').value);const j=await call('/license/'+encodeURIComponent(id));$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Lookup complete.','ok')}catch(e){status('Lookup failed: '+e.message,'err')}}
+function clearToken(){localStorage.removeItem('st_admin_token');$('token').value='';status('Token cleared.','ok')}
+</script>
+</body>
+</html>
