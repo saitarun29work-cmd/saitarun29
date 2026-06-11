@@ -46,6 +46,7 @@
     </div>
     <button onclick="approve()">Approve User</button>
     <button onclick="lookup()" style="background:#272a3d">Lookup</button>
+    <button onclick="revoke()" style="background:#7f1d1d">Revoke Access</button>
     <button onclick="clearToken()" style="background:#7f1d1d">Clear Token</button>
     <p class="muted">Token is saved only in this browser localStorage for convenience.</p>
   </section>
@@ -67,6 +68,7 @@ function preset(p){if(p==='trial'){$('plan').value='trial';$('days').value='7';$
 async function call(path,opts={}){save();const h={'Content-Type':'application/json'};if(opts.admin)h.Authorization='Bearer '+$('token').value.trim();const r=await fetch($('worker').value.trim().replace(/\/+$/,'')+path,{method:opts.body?'POST':'GET',headers:h,body:opts.body?JSON.stringify(opts.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw Error(j.error||j.message||'failed');return j}
 async function approve(){try{status('Approving...');const j=await call('/admin/approve',{admin:true,body:body()});$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Approved. User can Check Status now.','ok')}catch(e){status('Approval failed: '+e.message,'err')}}
 async function lookup(){try{const id=clean($('license').value);const j=await call('/license/'+encodeURIComponent(id));$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Lookup complete.','ok')}catch(e){status('Lookup failed: '+e.message,'err')}}
+async function revoke(){try{const id=clean($('license').value);if(!id.startsWith('ST_'))throw Error('invalid_license');if(!confirm('Revoke access for '+id+'?'))return;status('Revoking...');const j=await call('/admin/revoke',{admin:true,body:{licenseKey:id,note:'Access revoked by admin'}});$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Access revoked. User will be blocked on next check/use.','ok')}catch(e){status('Revoke failed: '+e.message,'err')}}
 function clearToken(){localStorage.removeItem('st_admin_token');$('token').value='';status('Token cleared.','ok')}
 </script>
 </body>
