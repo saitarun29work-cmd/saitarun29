@@ -14,6 +14,10 @@
     input,select{width:100%;box-sizing:border-box;background:#0f1018;border:1px solid #303247;color:#fff;border-radius:11px;padding:13px;font-size:15px}
     button{width:100%;border:0;border-radius:12px;padding:14px;margin-top:12px;background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff;font-weight:900;font-size:15px}
     .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .stat{background:#0f1018;border:1px solid #303247;border-radius:12px;padding:12px}
+    .stat b{display:block;font-size:23px}
+    .stat span{display:block;color:#94a3b8;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em}
     .quick{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
     .quick button{background:#272a3d;font-size:12px;padding:11px}
     pre{white-space:pre-wrap;word-break:break-word;background:#0f1018;border:1px solid #303247;border-radius:12px;padding:12px;color:#cbd5e1;min-height:70px}
@@ -29,6 +33,19 @@
     <input id="worker" value="https://sai-tarun-heygen-auth.saitarunheygen.workers.dev">
     <label>Admin Token</label>
     <input id="token" type="password" placeholder="Paste ADMIN_TOKEN">
+    <div class="stats" style="margin-top:14px">
+      <div class="stat"><span>Total</span><b id="statTotal">--</b></div>
+      <div class="stat"><span>Approved</span><b id="statApproved">--</b></div>
+      <div class="stat"><span>Pending</span><b id="statPending">--</b></div>
+      <div class="stat"><span>Revoked</span><b id="statRevoked">--</b></div>
+      <div class="stat"><span>Today</span><b id="statToday">--</b></div>
+      <div class="stat"><span>This Month</span><b id="statMonth">--</b></div>
+    </div>
+    <button onclick="refreshStats()" style="background:#272a3d">Refresh Stats</button>
+    <div class="row">
+      <button onclick="downloadCsv()" style="background:#272a3d">Download CSV</button>
+      <button onclick="downloadJson()" style="background:#272a3d">Download JSON</button>
+    </div>
     <label>User / License ID</label>
     <input id="license" placeholder="ST_xxxxxxxxxxxxxxxxxxxx">
     <div class="row">
@@ -57,6 +74,7 @@
 </main>
 <script>
 const $=id=>document.getElementById(id);
+let latestStats=null;
 $('token').value=localStorage.getItem('st_admin_token')||'';
 $('worker').value=localStorage.getItem('st_worker')||$('worker').value;
 function clean(v){return String(v||'').trim().replace(/[^A-Za-z0-9_]/g,'')}
@@ -66,10 +84,18 @@ function save(){localStorage.setItem('st_worker',$('worker').value.trim());if($(
 function body(){return{licenseKey:clean($('license').value),plan:$('plan').value,usageLimit:Number($('usage').value),deviceLimit:Number($('devices').value),expiresAt:expiry(),note:'Mobile admin approval'}}
 function preset(p){if(p==='trial'){$('plan').value='trial';$('days').value='7';$('usage').value='5';$('devices').value='1'}if(p==='pro'){$('plan').value='pro';$('days').value='30';$('usage').value='999999';$('devices').value='1'}if(p==='ultra'){$('plan').value='ultra';$('days').value='90';$('usage').value='999999';$('devices').value='2'}}
 async function call(path,opts={}){save();const h={'Content-Type':'application/json'};if(opts.admin)h.Authorization='Bearer '+$('token').value.trim();const r=await fetch($('worker').value.trim().replace(/\/+$/,'')+path,{method:opts.body?'POST':'GET',headers:h,body:opts.body?JSON.stringify(opts.body):undefined});const j=await r.json().catch(()=>({}));if(!r.ok||j.ok===false)throw Error(j.error||j.message||'failed');return j}
-async function approve(){try{status('Approving...');const j=await call('/admin/approve',{admin:true,body:body()});$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Approved. User can Check Status now.','ok')}catch(e){status('Approval failed: '+e.message,'err')}}
+function renderStats(j){latestStats=j;const s=j.stats||{};$('statTotal').textContent=s.total??0;$('statApproved').textContent=s.approved??0;$('statPending').textContent=s.pending??0;$('statRevoked').textContent=s.revoked??0;$('statToday').textContent=s.approvedToday??0;$('statMonth').textContent=s.approvedThisMonth??0}
+async function refreshStats(){try{if(!$('token').value.trim())throw Error('missing_admin_token');status('Loading stats...');const j=await call('/admin/stats',{admin:true});renderStats(j);$('out').textContent=JSON.stringify(j.stats||j,null,2);status('Stats refreshed.','ok')}catch(e){status('Stats failed: '+e.message,'err')}}
+function csvValue(v){const t=String(v??'');return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}
+function downloadText(name,text,type){const blob=new Blob([text],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
+async function ensureStats(){if(!latestStats)await refreshStats();return latestStats}
+async function downloadCsv(){try{const j=await ensureStats();const h=['license_key','full_name','status','plan','usage_count','usage_limit','device_count','device_limit','expires_at','created_at','approved_at','revoked_at','updated_at','note'];const rows=(j.licenses||[]).map(r=>[r.license_key,r.full_name,r.approved?'approved':(r.revoked_at?'revoked':'pending'),r.plan,r.usage_count,r.usage_limit,r.device_count,r.device_limit,r.expires_at,r.created_at,r.approved_at,r.revoked_at,r.updated_at,r.note]);downloadText('sai-tarun-licenses-'+new Date().toISOString().slice(0,10)+'.csv',[h,...rows].map(r=>r.map(csvValue).join(',')).join('\n'),'text/csv;charset=utf-8');status('CSV downloaded.','ok')}catch(e){status('CSV failed: '+e.message,'err')}}
+async function downloadJson(){try{const j=await ensureStats();downloadText('sai-tarun-licenses-'+new Date().toISOString().slice(0,10)+'.json',JSON.stringify(j,null,2),'application/json;charset=utf-8');status('JSON downloaded.','ok')}catch(e){status('JSON failed: '+e.message,'err')}}
+async function approve(){try{status('Approving...');const j=await call('/admin/approve',{admin:true,body:body()});$('out').textContent=JSON.stringify(j.doc||j,null,2);await refreshStats().catch(()=>{});status('Approved. User can Check Status now.','ok')}catch(e){status('Approval failed: '+e.message,'err')}}
 async function lookup(){try{const id=clean($('license').value);const j=await call('/license/'+encodeURIComponent(id));$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Lookup complete.','ok')}catch(e){status('Lookup failed: '+e.message,'err')}}
-async function revoke(){try{const id=clean($('license').value);if(!id.startsWith('ST_'))throw Error('invalid_license');if(!confirm('Revoke access for '+id+'?'))return;status('Revoking...');const j=await call('/admin/revoke',{admin:true,body:{licenseKey:id,note:'Access revoked by admin'}});$('out').textContent=JSON.stringify(j.doc||j,null,2);status('Access revoked. User will be blocked on next check/use.','ok')}catch(e){status('Revoke failed: '+e.message,'err')}}
+async function revoke(){try{const id=clean($('license').value);if(!id.startsWith('ST_'))throw Error('invalid_license');if(!confirm('Revoke access for '+id+'?'))return;status('Revoking...');const j=await call('/admin/revoke',{admin:true,body:{licenseKey:id,note:'Access revoked by admin'}});$('out').textContent=JSON.stringify(j.doc||j,null,2);await refreshStats().catch(()=>{});status('Access revoked. User will be blocked on next check/use.','ok')}catch(e){status('Revoke failed: '+e.message,'err')}}
 function clearToken(){localStorage.removeItem('st_admin_token');$('token').value='';status('Token cleared.','ok')}
+if($('token').value.trim())refreshStats().catch(()=>{});
 </script>
 </body>
 </html>
